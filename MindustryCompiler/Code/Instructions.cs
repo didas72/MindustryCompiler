@@ -6,17 +6,21 @@ namespace MindustryCompiler.Code
     public class Call : IInstruction
     {
         public string funcName;
+        public Memory memoryRef;
 
-        public Call(string funcName) { this.funcName = funcName; }
+        public Call(string funcName, Memory memoryRef) { this.funcName = funcName; this.memoryRef = memoryRef; }
 
-        public string GetCode() => $"op add _returnAddr_ @counter 2\njump {funcName} always";
+        //public string GetCode() => $"op add _returnAddr_ @counter 2\njump {funcName} always";
+
+        public string GetCode() => $"\top add _returnAddress_ @counter 9\n{new Push("_returnAddress_", memoryRef).GetCode()}\n\tjump {funcName} always";
     }
 
     public class Return : IInstruction
     {
-        public Return() { }
+        public Return() {  }
 
-        public string GetCode() => "set @counter _returnAddr_";
+        //public string GetCode() => "set @counter _returnAddr_";
+        public string GetCode() => $"\t{new Pop("_returnAddress_").GetCode()}\n\tset @counter _returnAddress_";
     }
 
     public class Label : IInstruction
@@ -39,7 +43,7 @@ namespace MindustryCompiler.Code
         public string GetCode()
         {
             if (useSwitch)
-                return "sensor _runOnce_ switch1 @enabled\njump _entryPoint_ equal _runOnce_ false\nend\n_entryPoint_:\ncontrol enabled switch1 true 0 0 0";
+                return "sensor _runOnce_ switch1 @enabled\njump <relJump=2> equal _runOnce_ false\nend\ncontrol enabled switch1 true 0 0 0\n_entryPoint_:";
             else
                 return $"{new Read("_runOnce_", index.ToString()).GetCode()}\njump _entryPoint_ equal _runOnce_ 0\nend\n_entryPoint_:\n{new Write("1", index.ToString()).GetCode()}";
         }
@@ -61,6 +65,15 @@ namespace MindustryCompiler.Code
         }
 
         public string GetCode() => $"set {name} {startValue}";
+
+        public enum VarType
+        {
+            None,
+            Local,
+            Memory,
+            Pointer,
+            Value,
+        }
     }
 
     public class Push : IInstruction
@@ -76,10 +89,8 @@ namespace MindustryCompiler.Code
     public class Pop : IInstruction
     {
         public string variable;
-        public int stackSize;
-        public string stackDevice;
 
-        public Pop(string variable, int stackSize, string stackDevice) { this.variable = variable; this.stackSize = stackSize; this.stackDevice = stackDevice; }
+        public Pop(string variable) { this.variable = variable; }
 
         public string GetCode() => $"op sub _stackPointer_ _stackPointer_ 1\njump <relJump=2> greaterThanEq _stackPointer_ 0\njump _errState_ always\n{new Read(variable, "_stackPointer_").GetCode()}";
     }
@@ -165,7 +176,7 @@ namespace MindustryCompiler.Code
         public ErrStateCheck(Memory memoryRef) { this.memoryRef = memoryRef; }
 
         //err var is used but not locked in compiler bc it is just at start and wont be used again
-        public string GetCode() => $"{new Read("err", "0").GetCode()}\njmp _errState_ equal err \"ERR\"";
+        public string GetCode() => $"{new Read("err", "0").GetCode()}\njump _errState_ equal err \"ERR\"";
     }
 
     public class ErrStateSet : IInstruction
@@ -179,61 +190,136 @@ namespace MindustryCompiler.Code
 
     public class CustomSet : IInstruction
     {
-        public VarType storeType;
+        public Variable.VarType storeType;
         public string store;
-        public VarType sourceType;
+        public Variable.VarType sourceType;
         public string source;
 
-        public CustomSet(VarType storeType, string store, VarType sourceType, string source) { this.storeType = storeType; this.store = store; this.sourceType = sourceType; this.source = source; }
+        public CustomSet(Variable.VarType storeType, string store, Variable.VarType sourceType, string source) { this.storeType = storeType; this.store = store; this.sourceType = sourceType; this.source = source; }
 
         public string GetCode()
         {
+            string valueGet, valueSave, valueStore;
+
             switch (storeType)
             {
-                case VarType.Local:
-                    if (sourceType == VarType.Memory)
-                        return $"{new Read(store, source).GetCode()}";
-                    else if (sourceType == VarType.Pointer)
-                        return $"{new Read("_tmpAddress_", source).GetCode()}\n{new Read(store, "_tmpAddress_").GetCode()}";
-                    else
-                        throw new System.Exception();
+                case Variable.VarType.Local:
+                    valueSave = store;
+                    valueStore = string.Empty;
+                    break;
 
-                case VarType.Memory:
-                    if (sourceType == VarType.Memory)
-                        return $"{new Read("_tmpValue_", source).GetCode()}\n{new Write("_tmpValue_", store).GetCode()}";
-                    else if (sourceType == VarType.Pointer)
-                        return $"{new Read("_tmpAddress_", source).GetCode()}\n{new Read("_tmpValue_", "_tmpAddress_").GetCode()}\n{new Write("_tmpValue_", store).GetCode()}";
-                    else if (sourceType == VarType.Value)
-                        return $"{new Write(source, store).GetCode()}";
-                    else
-                        throw new System.Exception();
+                case Variable.VarType.Memory:
+                    valueSave = "_tmpValue_";
+                    valueStore = $"{new Write("_tmpValue_", store).GetCode()}";
+                    break;
 
-                case VarType.Pointer:
-                    if (sourceType == VarType.Memory)
-                        return $"{new Read("_tmpValue_", source).GetCode()}\n{new Read("_tmpAddress_", store).GetCode()}\n{new Write("_tmpValue_", "_tmpAddress_").GetCode()}";
-                    else if (sourceType == VarType.Pointer)
-                        return $"{new Read("_tmpAddress_", source).GetCode()}\n{new Read("_tmpValue_", "_tmpAddress_").GetCode()}\n{new Read("_tmpAddress_", store).GetCode()}\n{new Write("_tmpValue_", "_tmpAddress_").GetCode()}";
-                    else if (sourceType == VarType.Value)
-                        return $"{new Read("_tmpAddress_", store).GetCode()}\n{new Write(source, "_tmpAddress_").GetCode()}";
-                    else
-                        throw new System.Exception();
+                case Variable.VarType.Pointer:
+                    valueSave = "_tmpValue_";
+                    valueStore = $"{new Read("_tmpAddress_", store).GetCode()}\n{new Write("_tmpValue_", "_tmpAddress_").GetCode()}";
+                    break;
+
+                default:
+                    throw new System.Exception();
             }
 
-            throw new System.Exception();
-        }
+            switch (sourceType)
+            {
+                case Variable.VarType.Local:
+                case Variable.VarType.Value:
+                    valueGet = $"{new Set(valueSave, source).GetCode()}\n";
+                    break;
 
-        public enum VarType
-        {
-            Local,
-            Memory,
-            Pointer,
-            Value,
+                case Variable.VarType.Memory:
+                    valueGet = $"{new Read(valueSave, source).GetCode()}\n";
+                    break;
+
+                case Variable.VarType.Pointer:
+                    valueGet = $"{new Read("_tmpAddress_", source).GetCode()}\n{new Read(valueSave, "_tmpAddress_").GetCode()}\n";
+                    break;
+
+                default:
+                    throw new System.Exception();
+            }
+
+            return $"{valueGet}{valueStore}";
         }
     }
 
-    public class CustomOperation
+    public class CustomOperation : IInstruction
     {
-        
+        public string store, firstOperand, secondOperand;
+        public Variable.VarType storeType, firstType, secondType;
+        public Operation.Op op;
+
+        public CustomOperation(string store, Variable.VarType storeType, string firstOperand, Variable.VarType firstType, string secondOperand, Variable.VarType secondType, Operation.Op op) { this.store = store; this.storeType = storeType; this.firstOperand = firstOperand; this.firstType = firstType; this.secondOperand = secondOperand; this.secondType = secondType; this.op = op; }
+
+        public string GetCode()
+        {
+            string op1Get, op2Get, opDo, opStore, resStore;
+
+            switch (storeType)
+            {
+                case Variable.VarType.Local:
+                    opStore = store;
+                    resStore = string.Empty;
+                    break;
+
+                case Variable.VarType.Memory:
+                    opStore = "_tmpResult_";
+                    resStore = $"{new Write("_tmpResult_", store).GetCode()}";
+                    break;
+
+                case Variable.VarType.Pointer:
+                    opStore = "_tmpResult_";
+                    resStore = $"{new Read("_tmpAddress_", store).GetCode()}\n{new Write("_tmpResult_", "_tmpAddress_").GetCode()}";
+                    break;
+
+                default:
+                    throw new System.Exception();
+            }
+
+            switch (firstType)
+            {
+                case Variable.VarType.Local:
+                case Variable.VarType.Value:
+                    op1Get = $"{new Set("_tmpValue_", firstOperand).GetCode()}\n";
+                    break;
+
+                case Variable.VarType.Memory:
+                    op1Get = $"{new Read("_tmpValue_", firstOperand).GetCode()}\n";
+                    break;
+
+                case Variable.VarType.Pointer:
+                    op1Get = $"{new Read("_tmpAddress_", firstOperand).GetCode()}\n{new Read("_tmpValue_", "_tmpAddress_").GetCode()}\n";
+                    break;
+
+                default:
+                    throw new System.Exception();
+            }
+
+            switch (secondType)
+            {
+                case Variable.VarType.Local:
+                case Variable.VarType.Value:
+                    op2Get = $"{new Set("_tmpValue1_", secondOperand).GetCode()}\n";
+                    break;
+
+                case Variable.VarType.Memory:
+                    op2Get = $"{new Read("_tmpValue1_", secondOperand).GetCode()}\n";
+                    break;
+
+                case Variable.VarType.Pointer:
+                    op2Get = $"{new Read("_tmpAddress_", secondOperand).GetCode()}\n{new Read("_tmpValue1_", "_tmpAddress_").GetCode()}\n";
+                    break;
+
+                default:
+                    throw new System.Exception();
+            }
+
+            opDo = secondType == Variable.VarType.None ? $"{new Operation(opStore, firstOperand, op).GetCode()}" : $"{new Operation(opStore, firstOperand, secondOperand, op).GetCode()}";
+
+            return $"{op1Get}{op2Get}{opDo}{resStore}";
+        }
     }
     #endregion
 
@@ -268,8 +354,8 @@ namespace MindustryCompiler.Code
         public string store, operand1, operand2;
         public Op op;
 
-        public Operation(string store, string operand, Operation.Op op) { this.store = store;  this.operand1 = operand; this.op = op; operand2 = "\"_null_\""; }
-        public Operation(string store, string operand1, string operand2, Operation.Op op) { this.store = store; this.operand1 = operand1; this.operand2 = operand2; this.op = op; }
+        public Operation(string store, string operand, Op op) { this.store = store;  this.operand1 = operand; this.op = op; operand2 = "\"_null_\""; }
+        public Operation(string store, string operand1, string operand2, Op op) { this.store = store; this.operand1 = operand1; this.operand2 = operand2; this.op = op; }
 
         public string GetCode() => $"op {op} {store} {operand1} {operand2}";
         

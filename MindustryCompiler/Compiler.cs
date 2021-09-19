@@ -218,7 +218,7 @@ namespace MindustryCompiler
                         {
                             string funcName1 = GetFunctionName(args[0]);
 
-                            return new Call(funcName1);
+                            return new Call(funcName1, memory);
                         }
                         else
                             throw new InvalidArgumentStatementException();
@@ -379,9 +379,9 @@ namespace MindustryCompiler
 
                     #region print
                     case "print":
-                        if (args.Length == 1)
+                        if (args.Length >= 1)
                         {
-                            return new Print(args[0]);
+                            return new Print(line.Split(new char[] { ' ' }, 2)[1]);
                         }
                         else
                             throw new InvalidArgumentStatementException();
@@ -531,63 +531,81 @@ namespace MindustryCompiler
         }
         private IInstruction CompileOperation(string line)
         {
-            string applyTo = line.Split(' ')[0];
+            string storeVar = line.Split(' ')[0];
             string[] args = line.Split(' ').Skip(1).ToArray();
 
-            if (IsVariable(applyTo)) //it starts with a valid variable (aka is operation)
-            {
-                if (args.Length == 2 && args[0] == "=") //is pure assignment
-                {
-                    if (IsMemVariable(args[1])) //<var> = $<memVar>
-                        return new CustomSet(CustomSet.VarType.Local, applyTo, CustomSet.VarType.Memory, memory.mapping[args[1]].ToString());
-                    else if (IsPointer(args[1])) //<var> = &<pointer>
-                        return new CustomSet(CustomSet.VarType.Local, applyTo, CustomSet.VarType.Pointer, memory.mapping[args[1]].ToString());
-                    else //<var> = <value> || <var> = <var>
-                        return new Set(applyTo, args[1]); //works for values or variables
-                }
-                else if (args.Length == 3 && args[0] == "=") //is one operand op
-                {
-                    if (IsMemVariable(args[2])) //<var> = <operation> $<memVar>
-                        return new;
-                    else if (IsPointer(args[2])) //<var> = <opeartion> &<pointer>
-                        return new;
-                    else
-                        return new Operation(applyTo, args[1], Operators.GetOperator(args[2]));
-                }
-                else if (args.Length == 4 && args[0] == "=") //is two operand op
-                {
-                    if (IsMemVariable(args[1]))
-                    {
-                        if (IsMemVariable(args[3])) //<var> = $<memVar> <operation> $<memVar>
-                            return new;
-                        else if (IsPointer(args[3])) //<var> = $<memVar> <opeartion> &<pointer>
-                            return new;
-                        else
-                            return new;
-                    }
-                    else if (IsPointer(args[1]))
-                    {
-                        if (IsMemVariable(args[3])) //<var> = &<pointer> <operation> $<memVar>
-                            return new;
-                        else if (IsPointer(args[3])) //<var> = &<pointer> <opeartion> &<pointer>
-                            return new;
-                        else //<var> = &<pointer> <opeartion> <var> || <var> = &<pointer> <opeartion> <value>
-                            return new;
-                    }
-                    else
-                        return new Operation(applyTo, args[1], args[3], Operators.GetOperator(args[2]));
-                }
-            }
-            else if (IsMemVariable(applyTo))
-            {
+            string firstOperand, secondOperand;
+            Variable.VarType storeType, firstType, secondType;
 
-            }
-            else if (IsPointer(applyTo))
-            {
+            if (IsVariable(storeVar))
+                storeType = Variable.VarType.Local;
+            else if (IsMemVariable(storeVar))
+                storeType = Variable.VarType.Memory;
+            else if (IsPointer(storeVar))
+                storeType = Variable.VarType.Pointer;
+            else
+                return null;
 
+            if (args.Length == 2 && args[0] == "=") //is pure assignment
+            {
+                if (IsMemVariable(args[1]))
+                    firstType = Variable.VarType.Memory;
+                else if (IsPointer(args[1]))
+                    firstType = Variable.VarType.Pointer;
+                else if (IsVariable(args[1]))
+                    firstType = Variable.VarType.Local;
+                else
+                    firstType = Variable.VarType.Value;
+
+                secondType = Variable.VarType.None;
+                firstOperand = args[1];
+                secondOperand = null;
+            }
+            else if (args.Length == 3 && args[0] == "=") //is one operand op
+            {
+                if (IsMemVariable(args[2]))
+                    firstType = Variable.VarType.Memory;
+                else if (IsPointer(args[2]))
+                    firstType = Variable.VarType.Pointer;
+                else if (IsVariable(args[2]))
+                    firstType = Variable.VarType.Local;
+                else
+                    firstType = Variable.VarType.Value;
+
+                secondType = Variable.VarType.None;
+                firstOperand = args[2];
+                secondOperand = null;
+            }
+            else if (args.Length == 4 && args[0] == "=")
+            {
+                if (IsMemVariable(args[1]))
+                    firstType = Variable.VarType.Memory;
+                else if (IsPointer(args[1]))
+                    firstType = Variable.VarType.Pointer;
+                else if (IsVariable(args[1]))
+                    firstType = Variable.VarType.Local;
+                else
+                    firstType = Variable.VarType.Value;
+
+                if (IsMemVariable(args[3]))
+                    secondType = Variable.VarType.Memory;
+                else if (IsPointer(args[3]))
+                    secondType = Variable.VarType.Pointer;
+                else if (IsVariable(args[3]))
+                    secondType = Variable.VarType.Local;
+                else
+                    secondType = Variable.VarType.Value;
+
+                firstOperand = args[1];
+                secondOperand = args[3];
             }
             else
                 return null;
+
+            if (args.Length == 2) //custom set
+                return new CustomSet(storeType, storeVar, firstType, firstOperand);
+            else //custom op
+                return new CustomOperation(storeVar, storeType, firstOperand, firstType, secondOperand, secondType, Operators.GetOperator(args[2]));
         }
 
 
@@ -815,7 +833,7 @@ namespace MindustryCompiler
 
 
 
-        private readonly string[] keywords = new string[] { "var", "func", ":", "call", "return", "_returnAddr_", "_runOnce_", "$_runOnce_", "_entryPoint_", "_null_", "_stackPointer_", "_addressSolve_", "_addressMemSpace_", "_addressOffset_", "_addressSolveFunc_", "_addressSolveRet_", "_errState_", "_indexedAddress_", "_tmpAddress_", "_tmpValue_" };
+        private readonly string[] keywords = new string[] { "var", "func", ":", "call", "return", "_returnAddr_", "_runOnce_", "$_runOnce_", "_entryPoint_", "_null_", "_stackPointer_", "_addressSolve_", "_addressMemSpace_", "_addressOffset_", "_addressSolveFunc_", "_addressSolveRet_", "_errState_", "_indexedAddress_", "_tmpAddress_", "_tmpValue_", "_tmpValue1_", "_tmpValue2_", "_tmpValue2_", "_tmpValue3_", "_tmpValue4_", "_tmpValue5_", "_tmpResult_" };
 
         private void ValidateVariableName(string name, bool newName)
         {
