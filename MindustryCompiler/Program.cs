@@ -5,7 +5,7 @@ namespace MindustryCompiler
 {
     class Program
     {
-        private static string inputPath = "E:\\Documents\\temp\\mindustry.test";
+        private static string inputPath =  "C:\\Users\\diogo\\Documents\\temp\\mindustry.test"; //"E:\\Documents\\temp\\mindustry.test";
 
         private static void Main(string[] args)
         {

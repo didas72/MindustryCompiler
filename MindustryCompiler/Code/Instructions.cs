@@ -12,7 +12,7 @@ namespace MindustryCompiler.Code
 
         //public string GetCode() => $"op add _returnAddr_ @counter 2\njump {funcName} always";
 
-        public string GetCode() => $"\top add _returnAddress_ @counter 9\n{new Push("_returnAddress_", memoryRef).GetCode()}\n\tjump {funcName} always";
+        public string GetCode() => $"\top add _returnAddress_ @counter 8\n{new Push("_returnAddress_", memoryRef).GetCode()}\n\tjump {funcName} always";
     }
 
     public class Return : IInstruction
@@ -43,9 +43,9 @@ namespace MindustryCompiler.Code
         public string GetCode()
         {
             if (useSwitch)
-                return "sensor _runOnce_ switch1 @enabled\njump <relJump=2> equal _runOnce_ false\nend\ncontrol enabled switch1 true 0 0 0\n_entryPoint_:";
+                return "sensor _runOnce_ switch1 @enabled\njump <relJump=2> equal _runOnce_ false\nend\ncontrol enabled switch1 true 0 0 0";
             else
-                return $"{new Read("_runOnce_", index.ToString()).GetCode()}\njump _entryPoint_ equal _runOnce_ 0\nend\n_entryPoint_:\n{new Write("1", index.ToString()).GetCode()}";
+                return $"{new Read("_runOnce_", index.ToString()).GetCode()}\njump <relJump=2> equal _runOnce_ 0\nend\n{new Write("1", index.ToString()).GetCode()}";
         }
          
     }
@@ -76,6 +76,13 @@ namespace MindustryCompiler.Code
         }
     }
 
+    public class StackSetup : IInstruction
+    {
+        public StackSetup() { }
+
+        public string GetCode() => "set _stackPointer_ 0";
+    }
+
     public class Push : IInstruction
     {
         public string variable;
@@ -83,7 +90,15 @@ namespace MindustryCompiler.Code
 
         public Push(string variable, Memory memoryRef) { this.variable = variable; this.memoryRef = memoryRef; }
 
-        public string GetCode() => $"{new Write(variable, "_stackPointer_").GetCode()}\nop add _stackPointer_ _stackPointer_ 1\njump <relJump=2> lessThan _stackPointer_ {memoryRef.stackSize}\njump _errState_ always";
+        public string GetCode() => "set _stackRet_ <relJump=2>\njump _push_ always";
+        //public string GetCode() => $"{new Write(variable, "_stackPointer_").GetCode()}\nop add _stackPointer_ _stackPointer_ 1\njump <relJump=2> lessThan _stackPointer_ {memoryRef.stackSize}\njump _errState_ always";
+    }
+
+    public class PushFunc : IInstruction
+    {
+        public PushFunc() { }
+
+        public string GetCode() => $"";
     }
 
     public class Pop : IInstruction

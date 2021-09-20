@@ -26,7 +26,7 @@ namespace MindustryCompiler
 
         public Compiler()
         {
-            COMPILE_LOCK = "asd";
+            COMPILE_LOCK = string.Empty;
         }
 
 
@@ -99,7 +99,8 @@ namespace MindustryCompiler
                 throw new OutOfMemoryException("To compile code you need at least one memory cell or bank.");
 
             memory.AddMapping("_stack_", memory.stackSize);
-            code.Add(new ErrStateCheck(memory));
+            code.Add(new StackSetup());
+            //code.Add(new ErrStateCheck(memory));
 
             if (runOnce)
             {
@@ -113,6 +114,8 @@ namespace MindustryCompiler
                     code.Add(new RunOnce());
                 }
             }
+
+            code.Add(new Label("_entryPoint_"));
 
             for (int l = 0; l < lines.Length; l++)
             {
@@ -614,8 +617,6 @@ namespace MindustryCompiler
         {
             List<string> code = new List<string>();
 
-            //setup stack stuff
-
             for (int l = 0; l < lines.Length; l++)
             {
                 if (string.IsNullOrEmpty(lines[l]))
@@ -625,6 +626,10 @@ namespace MindustryCompiler
                 else if (lines[l].StartsWith("#"))
                 {
                     code.Add(PrecompileLine(lines[l]));
+                }
+                else if (lines[l].StartsWith("//"))
+                {
+                    code.Add(string.Empty);
                 }
                 else
                 {
@@ -829,7 +834,6 @@ namespace MindustryCompiler
                 ValidateLabel(lines[i], i);
             }
         }
-
 
 
 
